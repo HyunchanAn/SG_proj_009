@@ -17,3 +17,12 @@
 기획 2. 머신러닝(GNN) 기반 IR 예측 모델 도입 (브랜치: feature/ml-ir)
 - 분자 구조(SMILES)를 그래프로 변환하고 실제 SDBS/NIST IR 스펙트럼 데이터베이스로 학습된 Graph Neural Network 기반 AI 예측 모델 도입.
 - 연산 속도와 정밀도를 동시에 확보하는 접근 방식 연구.
+
+[브랜치 작업 완료 요약 (2026-04-24)]
+1. feature/quantum-ir 브랜치
+- GFN2-xTB 양자역학 패키지와 ASE를 연동하여 정확한 헤시안(Hessian) 기반 진동 주파수 및 흡수 강도 산출 알고리즘 구축.
+- 이산적 피크를 매끄러운 곡선으로 변환하는 가우시안 스미어링(Gaussian Smearing) 로직 개발.
+
+2. feature/ml-ir 브랜치
+- 향후 스펙트럼 데이터베이스 학습을 위한 PyTorch 기반 IRGraphNeuralNetwork (GNN) 아키텍처 스켈레톤 구축.
+- RDKit 분자 객체 특성을 AI 학습용 텐서로 변환하는 전처리 파이프라인 구성 및 UI 모델 예측 연동 구현.
