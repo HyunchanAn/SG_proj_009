@@ -20,13 +20,20 @@
 - [고도화] 기획 3번 '고분자 사슬 효과(Polymer Chain Effects)' 물리 모델 구현 완료.
 - RDKit 기반의 선택적 포화 로직(Vinyl/Acetylene saturation) 및 중합도(n)에 따른 Peak Shift/Broadening 엔진 도입.
 - 말단기(End-group)와 주쇄(Backbone)의 물리적 기여도를 1/n 비율로 합성하는 하이브리드 예측 알고리즘 적용.
+- [UI/UX] 앱 기본 예시 분자를 아스피린에서 10-MDP(치과용 접착제 원료)로 변경 및 중합도 가이드 가시화.
+- [CI/CD] 타 환경 재현성 확보를 위해 모델 가중치(weights) 및 학습 스크립트 일체를 저장소에 포함.
+- [Git] .gitignore 설정을 통해 __pycache__ 및 대용량 원본 데이터(datasets/) 제외 처리.
 
 [향후 고도화 기획]
 기획 1. 양자화학 기반 정밀 계산 연동 (브랜치: feature/quantum-ir)
 - Psi4, xTB 등의 패키지를 활용하여 진동 주파수 및 흡수 강도 직접 계산 및 물리적 정밀도 확보.
 
-기획 2. 역예측 모델 (Composition Optimization) - 구현 완료
-- 사용자가 업로드한 실험 IR 데이터를 기반으로 AI가 최적의 성분 배합비를 추정하는 역설계 알고리즘 구현.
+[기획 완료 내역]
+기획 2. 역예측 모델 (Composition Optimization) - [2026-05-11 완료]
+- 사용자가 업로드한 실측 IR 데이터를 타겟으로 `scipy.optimize.minimize`를 활용하여 성분별 배합비를 추정하는 역설계 알고리즘 구현.
 
-기획 3. 고분자 사슬 효과 (Polymer Chain Effects) - 고도화 완료
-- 중합도(n) 변수를 도입하여 분자 사슬 길이에 따른 피크 시프트 및 끝단 효과를 물리적으로 반영하는 모델 확장.
+기획 3. 고분자 사슬 효과 (Polymer Chain Effects) - [2026-05-11 고도화 완료]
+- 처리 방식:
+    1) RDKit 기반 선택적 포화: Vinyl/Acetylene 등 중합성 이중/삼중 결합만 선택적으로 단일 결합으로 변환하여 주쇄(Backbone) 구조 모사.
+    2) 물리적 효과 주입: 중합도(n)에 따라 파수(Wavenumber)를 미세하게 Shift 시키고, 고분자 특유의 비정질성을 가우시안 브로드닝으로 구현.
+    3) 하이브리드 모델링: 1/n 비율을 활용하여 말단기(Monomer)와 주쇄(Backbone)의 스펙트럼 예측값을 동적으로 합성.
