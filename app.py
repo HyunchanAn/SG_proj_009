@@ -120,30 +120,61 @@ if st.session_state.generate_clicked:
                             st.divider()
                     
                 with col2:
-                    st.subheader("혼합물 예측 IR 스펙트럼")
-                    # 결과 시각화
-                    fig, ax = plt.subplots(figsize=(10, 5))
-                    ax.plot(wavenumbers, transmittance, color='black', linewidth=1.5)
+                    st.subheader("혼합물 예측 IR 스펙트럼 (Interactive)")
                     
-                    # X축 역전
-                    ax.set_xlim(4000, 400)
-                    ax.set_ylim(0, 105)
+                    import plotly.graph_objects as go
+                    import numpy as np
                     
-                    title_str = " + ".join([c['smiles'] for c in components])
-                    ax.set_title(f"Simulated Mixture IR Spectrum: {title_str}", fontsize=14, fontweight='bold')
-                    ax.set_xlabel("Wavenumber (cm$^{-1}$)", fontsize=12)
-                    ax.set_ylabel("Transmittance (%)", fontsize=12)
-                    ax.grid(True, which='both', linestyle='--', alpha=0.5)
+                    # 시각화 테마 선택
+                    chart_theme = st.radio("차트 테마", ["Dark", "Light"], horizontal=True, index=0)
+                    theme_template = "plotly_dark" if chart_theme == "Dark" else "plotly_white"
+                    line_color = "white" if chart_theme == "Dark" else "black"
+                    label_color = "#00BFFF" if chart_theme == "Dark" else "blue" # DeepSkyBlue for dark mode
                     
-                    # 식별된 작용기 텍스트 라벨 추가
-                    if show_labels:
-                        for fg in all_identified_groups:
-                            ax.text(fg["wavenumber"], 105 - (fg["intensity"] * 100) - 5, fg["name"], 
-                                     horizontalalignment='center', verticalalignment='bottom', 
-                                     fontsize=10, color='blue', rotation=90)
+                    fig = go.Figure()
                     
-                    fig.tight_layout()
-                    st.pyplot(fig)
+                    # 메인 스펙트럼 라인
+                    fig.add_trace(go.Scatter(
+                        x=wavenumbers, 
+                        y=transmittance,
+                        mode='lines',
+                        line=dict(color=line_color, width=1.5),
+                        name='Simulated IR'
+                    ))
+                    
+                    # 작용기 피크 라벨
+                    for fg in all_identified_groups:
+                        # 이론적 강도가 아닌, 실제 시뮬레이션된 곡선의 해당 파수에서의 투과율 값을 찾음
+                        # wavenumbers가 내림차순이므로 np.interp 시 주의 (x, xp, fp 순서)
+                        actual_y = np.interp(fg["wavenumber"], wavenumbers[::-1], transmittance[::-1])
+                        
+                        fig.add_annotation(
+                            x=fg["wavenumber"],
+                            y=actual_y,
+                            text=fg["name"],
+                            showarrow=True,
+                            arrowhead=1,
+                            ax=0,
+                            ay=-30 if actual_y > 30 else 30, # 피크가 너무 깊으면 라벨을 위로, 아니면 아래로 (또는 고정 위쪽)
+                            font=dict(color=label_color, size=10),
+                            bgcolor="rgba(0, 0, 0, 0.5)" if chart_theme == "Dark" else "rgba(255, 255, 255, 0.7)",
+                            bordercolor=label_color,
+                            borderwidth=1
+                        )
+                    
+                    fig.update_layout(
+                        title=f"Simulated Mixture IR Spectrum",
+                        xaxis_title="Wavenumber (cm⁻¹)",
+                        yaxis_title="Transmittance (%)",
+                        xaxis=dict(range=[4000, 400], gridcolor='rgba(128,128,128,0.2)'),
+                        yaxis=dict(range=[0, 105], gridcolor='rgba(128,128,128,0.2)'),
+                        template=theme_template,
+                        hovermode="x unified",
+                        height=550,
+                        margin=dict(l=20, r=20, t=40, b=20)
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
                 
                 # 피크 정보 표로 출력
                 st.subheader("주요 작용기 흡수 피크 정보 (배합비 반영)")

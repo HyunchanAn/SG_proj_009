@@ -237,6 +237,52 @@ def apply_physical_chain_effects(prediction, n, wavenumbers):
         
     return prediction
 
+def apply_hydrogen_bonding_effects(prediction, mol, ratio, n, wavenumbers):
+    """
+    분자 농도(ratio)와 중합도(n)에 따른 수소 결합(Hydrogen Bonding) 효과를 모사합니다.
+    O-H, N-H 피크의 Shift 및 Broadening을 처리합니다.
+    """
+    # 수소 결합 가능성 확인 (O-H 또는 N-H 존재 여부)
+    has_oh = mol.HasSubstructMatch(Chem.MolFromSmarts("[OX2H]"))
+    has_nh = mol.HasSubstructMatch(Chem.MolFromSmarts("[NX3H]"))
+    
+    if not (has_oh or has_nh):
+        return prediction
+        
+    # 수소 결합 강도 계수 (0~1)
+    # 농도가 높고 중합도가 클수록 수소 결합이 강해짐
+    h_bond_intensity = ratio * (1.0 - 0.2/n)
+    
+    if h_bond_intensity < 0.1:
+        return prediction
+        
+    # O-H/N-H 영역 (약 3100 ~ 3700 cm-1)
+    # 인덱스 계산 (wavenumbers는 4000에서 400으로 내림차순)
+    region_mask = (wavenumbers >= 3100) & (wavenumbers <= 3700)
+    if not np.any(region_mask):
+        return prediction
+        
+    # 해당 영역 추출
+    oh_region = prediction[region_mask]
+    
+    # 1. Broadening 적용 (수소 결합으로 인한 에너지 분포 확장)
+    from scipy.ndimage import gaussian_filter1d
+    sigma = 10.0 * h_bond_intensity
+    broadened_oh = gaussian_filter1d(oh_region, sigma=sigma)
+    
+    # 2. Shift 적용 (Free OH -> Bonded OH)
+    # 고주파수(3600)의 강도를 저주파수(3300) 쪽으로 미세하게 밀어냄
+    shift_amount = int(40 * h_bond_intensity) # 최대 40포인트 정도 이동
+    shifted_oh = np.zeros_like(broadened_oh)
+    if shift_amount > 0:
+        # 내림차순 파수이므로 오른쪽(인덱스 증가)으로 밀면 저파수 이동
+        shifted_oh[shift_amount:] = broadened_oh[:-shift_amount]
+    else:
+        shifted_oh = broadened_oh
+        
+    prediction[region_mask] = shifted_oh
+    return prediction
+
 def generate_ir_spectrum(components):
     """
     여러 화합물(SMILES)과 그 배합비를 입력받아 가상 IR 스펙트럼 데이터를 생성합니다.
@@ -289,6 +335,10 @@ def generate_ir_spectrum(components):
         
         # 중합도에 따른 Shift & Broadening 적용
         final_comp_pred = apply_physical_chain_effects(combined_pred, n, wavenumbers)
+        
+        # 수소 결합(Hydrogen Bonding) 효과 적용
+        final_comp_pred = apply_hydrogen_bonding_effects(final_comp_pred, mol, ratio, n, wavenumbers)
+        
         raw_prediction += final_comp_pred * ratio
 
         # UI용 작용기 식별 (Monomer 기준)
@@ -304,16 +354,6 @@ def generate_ir_spectrum(components):
             
     # 최종 렌더링 스케일링
     total_absorption = raw_prediction * 1.5
-    transmittance = 1.0 - total_absorption
-    
-    baseline_drift = np.linspace(0.0, 0.05, len(wavenumbers)) 
-    transmittance = transmittance - baseline_drift
-    transmittance = np.clip(transmittance, 0.0, 1.0)
-    
-    return wavenumbers, transmittance * 100, all_identified_groups, mols
-
-    # 3. 투과도(Transmittance) 변환 및 베이스라인/노이즈 적용
-    # 흡광도(A)가 높아질수록 투과도(T)는 낮아지는 직관적 근사: T = 1 - A
     transmittance = 1.0 - total_absorption
     
     baseline_drift = np.linspace(0.0, 0.05, len(wavenumbers)) 
