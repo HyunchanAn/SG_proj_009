@@ -1,49 +1,45 @@
-[2026-04-24]
-- 프로젝트 초기화 및 가상 IR 스펙트럼 생성 도구 개발 시작
-- RDKit, NumPy, Matplotlib 라이브러리 기반 Python 환경 구성 확인 완료
-- 주요 작용기 식별(identify_functional_groups) 및 가상 데이터(generate_ir_spectrum) 생성 로직 구현
-- 생성된 파수(Wavenumber) 및 투과도(Transmittance) 기반 시각화 파이프라인(plot_ir_spectrum) 완성
-- 아스피린(Aspirin) SMILES 샘플 적용 테스트 및 sample_ir.png 이미지 추출 확인
-- Streamlit 프레임워크 연동(app.py)을 통한 대화형 웹 UI 구축 (SMILES 입력 및 실시간 IR 스펙트럼 렌더링 지원)
-- UI 화면 내 RDKit 기반 2D 분자 구조(MolToImage) 렌더링 기능 추가 적용
-- IR 시뮬레이션 알고리즘 고도화: 작용기(Functional Group) 데이터베이스 대폭 확장 및 세분화 (아민, 할로겐 등)
-- 현실성 부여를 위한 지문 영역(Fingerprint Region) 시뮬레이션 및 기기 베이스라인 노이즈 추가
-- Mac 환경에서 PyTorch MPS(Metal Performance Shaders) 가속 지원 확인 및 딥러닝 학습 파이프라인(QM9 데이터셋) 구축
+[SG_proj_009] 고분자 IR 스펙트럼 시뮬레이터 고도화 개발 로그
 
-[2026-05-11]
-- PyTorch Geometric(PyG) 라이브러리를 도입하여 단순 Linear 모델을 GCNConv 기반 GNN으로 고도화 완료.
-- Streamlit UI 업데이트: 작용기 라벨 표시 토글 버튼 추가 및 세션 상태(Session State) 유지 로직 보완.
-- IR 렌더링 로직 수정 및 롤백: Beer-Lambert 법칙 적용 시도 후 O-H 피크 왜곡 문제로 기존 선형 근사 방식으로 원복.
-- 신규 브랜치 분기 (feature/gnn-real-data): 실제 실험 데이터 기반 파인튜닝을 위한 독립 환경 구축.
-- 대규모 오픈소스 데이터셋(Lamblador/IRSpectra) 도입: 1만 개 이상의 실제 분자 데이터 확보 및 보간 전처리 완료.
-- 시뮬레이션 추론부 전면 개편: 휴리스틱 로직을 완전히 제거하고 100% GNN 예측 결과 기반 렌더링 통합.
-- [고도화] 기획 3번 '고분자 사슬 효과(Polymer Chain Effects)' 물리 모델 구현 완료.
-- RDKit 기반의 선택적 포화 로직(Vinyl/Acetylene saturation) 및 중합도(n)에 따른 Peak Shift/Broadening 엔진 도입.
-- 말단기(End-group)와 주쇄(Backbone)의 물리적 기여도를 1/n 비율로 합성하는 하이브리드 예측 알고리즘 적용.
-- [UI/UX] 앱 기본 예시 분자를 아스피린에서 10-MDP(치과용 접착제 원료)로 변경 및 중합도 가이드 가시화.
-- [CI/CD] 타 환경 재현성 확보를 위해 모델 가중치(weights) 및 학습 스크립트 일체를 저장소에 포함.
-- [Git] .gitignore 설정을 통해 __pycache__ 및 대용량 원본 데이터(datasets/) 제외 처리.
-
-[향후 고도화 기획]
-기획 1. 양자화학 기반 정밀 계산 연동 (브랜치: feature/quantum-ir)
-- Psi4, xTB 등의 패키지를 활용하여 진동 주파수 및 흡수 강도 직접 계산 및 물리적 정밀도 확보.
-
-기획 4. 수소 결합(Hydrogen Bonding) 효과 모델링 [진행 중]
-- 분자 내/간 수소 결합에 따른 O-H, N-H 피크의 Shift 및 Broadening 효과를 배합비와 중합도에 따라 동적으로 반영.
-
-기획 5. 인터랙티브 시각화 (Plotly 도입) - [2026-05-11 완료]
-- Matplotlib의 정적 그래프를 Plotly로 교체하여 피크 확대, 실시간 데이터 툴팁, 작용기 어노테이션 기능 구현.
-
-기획 6. 데이터셋 확장 및 파인튜닝 (Lamblador/IRSpectra) - [2026-05-11 완료]
-- 8,352개의 실제 실험 IR 데이터를 활용하여 GNN 모델 학습 완료. 최종 Loss: 0.0349.
-- 실제 데이터 기반의 고정밀 추론 엔진으로 고도화되어 시뮬레이션의 리얼리티 확보.
+[작업 요약]
+- 2026-05-11: 고분자 물리 효과 반영 및 양자화학-GNN 하이브리드 엔진 구축 완료.
 
 [기획 완료 내역]
-기획 2. 역예측 모델 (Composition Optimization) - [2026-05-11 완료]
-- 사용자가 업로드한 실측 IR 데이터를 타겟으로 `scipy.optimize.minimize`를 활용하여 성분별 배합비를 추정하는 역설계 알고리즘 구현.
+기획 1. 양자화학 연동 (xTB 기반) - [2026-05-11 완료]
+- GFN2-xTB 엔진을 연동하여 물리 기반의 정밀 피크 계산 구현.
+- GNN(데이터) + QC(물리) 하이브리드 추론 모델 구축 (3:7 가중 합성 및 캐싱 지원).
+- Beer-Lambert Law(T = exp(-A))를 적용하여 피크 뭉개짐(Clipping) 방지 및 실험 데이터급 곡선미 확보.
+- 수소 결합(H-Bond) 영역에 초강력 Broadening(Sigma 60) 및 저파수 Shift(120pt) 적용하여 리얼리티 극대화.
+- RDKit의 EmbedMolecule(ETKDG)을 통해 SMILES를 3D 구조로 변환 후 xTB Hessian 계산 수행.
+- g98.out 파싱 로직을 통해 파수(Wavenumber)와 강도(Intensity) 추출 및 Scaling Factor(0.96) 적용.
+- GNN 예측값과 QC 계산값을 3:7 비율로 합성하는 하이브리드 추론 엔진 구축 및 TemporaryDirectory 기반 파일 관리.
 
-기획 3. 고분자 사슬 효과 (Polymer Chain Effects) - [2026-05-11 고도화 완료]
-- 처리 방식:
-    1) RDKit 기반 선택적 포화: Vinyl/Acetylene 등 중합성 이중/삼중 결합만 선택적으로 단일 결합으로 변환하여 주쇄(Backbone) 구조 모사.
-    2) 물리적 효과 주입: 중합도(n)에 따라 파수(Wavenumber)를 미세하게 Shift 시키고, 고분자 특유의 비정질성을 가우시안 브로드닝으로 구현.
-    3) 하이브리드 모델링: 1/n 비율을 활용하여 말단기(Monomer)와 주쇄(Backbone)의 스펙트럼 예측값을 동적으로 합성.
+기획 2. 역예측 모델 (Composition Optimization) - [2026-05-11 완료]
+- Scipy.optimize.minimize를 활용하여 실험 스펙트럼과 시뮬레이션 간의 MSE(Mean Squared Error)를 최소화하는 배합비 역추적 알고리즘 구현.
+
+기획 3. 고분자 사슬 효과(Polymer Chain Effects) 구현 - [2026-05-11 완료]
+- RDKit의 ReplaceSubstructs를 활용하여 비닐기/아세틸렌기를 알칸 구조로 변환하는 선택적 포화(Saturation) 로직 구현 (주쇄 모사).
+- 중합도(n)에 비례하여 Lorentz-like 브로드닝 및 저파수대로의 피크 시프트(Shift)를 물리적으로 모델링.
+- 단량체(Monomer)와 주쇄(Backbone)의 스펙트럼을 1/n 가중치로 합성하는 하이브리드 로직 적용.
+
+기획 4. 수소 결합(Hydrogen Bonding) 효과 모델링 - [2026-05-11 완료]
+- SMARTS 패턴([OX2H], [NX3H])을 통한 수소 결합 가능 작용기 식별.
+- 농도(Ratio)와 중합도(n)에 따른 가우시안 필터 기반의 Broadening 및 3300cm-1 부근의 정교한 Shift 효과 구현.
+
+기획 5. 인터랙티브 시각화 (Plotly 도입) - [2026-05-11 완료]
+- Plotly 기반의 Interactive 차트 도입: Zoom, Pan, 실시간 Hover 정보 제공.
+- Light/Dark 테마 선택 기능 및 테마별 최적화된 Color Palette 적용.
+- np.interp를 활용하여 스펙트럼 곡선 위의 정확한 좌표를 가리키는 고정밀 어노테이션 시스템 구축.
+
+기획 6. 데이터셋 확장 및 GNN 파인튜닝 - [2026-05-11 완료]
+- NIST/HuggingFace Lamblador 데이터셋에서 8,352개의 실제 실험 데이터 확보 및 전처리.
+- Apple Silicon MPS 가속을 활용하여 Knowledge Distillation 기반 GNN 학습 완료. (최종 Loss: 0.0349)
+
+[환경 및 인프라]
+- [GPU] Apple Silicon MPS 가속 전역 적용 (모델 로드 시 자동 감지).
+- [Git] .gitignore를 통한 데이터셋(datasets/) 및 캐시(__pycache__) 관리 효율화.
+- [Model] weights/ir_gnn_v1.pt (8k real-data fine-tuned).
+
+[향후 과제]
+- 기획 7. 동적 용매 효과(Solvent Effects) 모델링.
+- 기획 8. 3D 분자 구조 인터랙티브 시각화 연동.
+- 기획 9. 계산 속도 향상을 위한 멀티 프로세싱 도입.

@@ -1,12 +1,24 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from rdkit import Chem
+from rdkit.Chem import AllChem
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data, Batch, DataLoader
 from torch_geometric.nn import GCNConv, global_mean_pool
 from scipy.optimize import minimize
 from scipy.interpolate import interp1d
+import os
+import sys
+
+# 양자화학 엔진 임포트
+try:
+    from qc_engine import calculate_ir_qc, peaks_to_spectrum
+except ImportError:
+    calculate_ir_qc = None
+
+# QC 결과 캐시 (SMILES -> Peaks)
+QC_CACHE = {}
 
 # ==========================================
 # [기획 2] 머신러닝(GNN) 기반 IR 예측 모델 아키텍처
@@ -50,17 +62,19 @@ class IRGraphNeuralNetwork(nn.Module):
 _ml_model = None
 
 def load_ml_model():
-    """사전 학습된 가중치를 로드하는 싱글톤 함수"""
+    """사전 학습된 가중치를 로드하고 가속 장치(MPS/CPU)를 반환하는 함수"""
     global _ml_model
+    device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+    
     if _ml_model is None:
         _ml_model = IRGraphNeuralNetwork()
         weight_path = 'weights/ir_gnn_v1.pt'
-        import os
         if os.path.exists(weight_path):
-            _ml_model.load_state_dict(torch.load(weight_path, map_location=torch.device('cpu'), weights_only=True))
-            print(f"✅ 학습된 가중치를 로드했습니다: {weight_path}")
+            _ml_model.load_state_dict(torch.load(weight_path, map_location=device, weights_only=True))
+            print(f"✅ 학습된 가중치를 로드했습니다 ({device}): {weight_path}")
+        _ml_model.to(device)
         _ml_model.eval()
-    return _ml_model
+    return _ml_model, device
 
 def smiles_to_graph_features(mol, ratio=1.0):
     """RDKit 분자 객체를 배합비(Ratio)가 포함된 PyTorch Geometric Data 객체로 변환합니다."""
@@ -249,57 +263,58 @@ def apply_hydrogen_bonding_effects(prediction, mol, ratio, n, wavenumbers):
     if not (has_oh or has_nh):
         return prediction
         
-    # 수소 결합 강도 계수 (0~1)
-    # 농도가 높고 중합도가 클수록 수소 결합이 강해짐
     h_bond_intensity = ratio * (1.0 - 0.2/n)
     
-    if h_bond_intensity < 0.1:
+    if h_bond_intensity < 0.05:
         return prediction
         
-    # O-H/N-H 영역 (약 3100 ~ 3700 cm-1)
-    # 인덱스 계산 (wavenumbers는 4000에서 400으로 내림차순)
-    region_mask = (wavenumbers >= 3100) & (wavenumbers <= 3700)
+    # O-H/N-H 영역 (약 3000 ~ 3700 cm-1) - 영역을 조금 더 넓힘
+    region_mask = (wavenumbers >= 3000) & (wavenumbers <= 3750)
     if not np.any(region_mask):
         return prediction
         
-    # 해당 영역 추출
     oh_region = prediction[region_mask]
     
-    # 1. Broadening 적용 (수소 결합으로 인한 에너지 분포 확장)
+    # 1. 강력한 Broadening 적용 (수소 결합의 핵심적 특성)
     from scipy.ndimage import gaussian_filter1d
-    sigma = 10.0 * h_bond_intensity
+    # Sigma를 대폭 강화 (10.0 -> 60.0)
+    sigma = 60.0 * h_bond_intensity 
     broadened_oh = gaussian_filter1d(oh_region, sigma=sigma)
     
-    # 2. Shift 적용 (Free OH -> Bonded OH)
-    # 고주파수(3600)의 강도를 저주파수(3300) 쪽으로 미세하게 밀어냄
-    shift_amount = int(40 * h_bond_intensity) # 최대 40포인트 정도 이동
+    # 2. 강한 Shift 적용 (Free -> Bonded 이동 폭 확대)
+    # 수소 결합이 강할수록 피크가 더 낮은 파수(오른쪽)로 많이 이동함
+    shift_amount = int(120 * h_bond_intensity) # 최대 120포인트 이동
     shifted_oh = np.zeros_like(broadened_oh)
     if shift_amount > 0:
-        # 내림차순 파수이므로 오른쪽(인덱스 증가)으로 밀면 저파수 이동
         shifted_oh[shift_amount:] = broadened_oh[:-shift_amount]
+        # 이동 후 빈 자리는 주변부로 채움
+        shifted_oh[:shift_amount] = broadened_oh[0] * 0.1 
     else:
         shifted_oh = broadened_oh
+        
+    # 수소 결합 피크는 면적이 넓어지면서 시각적으로 더 깊게 느껴지도록 보정
+    shifted_oh = shifted_oh * (1.0 + 0.2 * h_bond_intensity)
         
     prediction[region_mask] = shifted_oh
     return prediction
 
-def generate_ir_spectrum(components):
+def generate_ir_spectrum(components, use_qc=False):
     """
     여러 화합물(SMILES)과 그 배합비를 입력받아 가상 IR 스펙트럼 데이터를 생성합니다.
-    고분자 효과(Polymer Chain Effects)가 물리적으로 반영됩니다.
+    use_qc=True일 경우 양자화학 계산(xTB)을 통해 정밀도를 높입니다.
     """
     wavenumbers = np.linspace(4000, 400, 3600)
-    raw_prediction = np.zeros_like(wavenumbers)
-    
+    raw_prediction = np.zeros(3600)
     all_identified_groups = []
     mols = []
+    
+    # ML 모델 로드
+    model, device = load_ml_model()
     
     # 총 배합비 합계 계산 (정규화를 위해)
     total_ratio = sum([comp.get("ratio", 0) for comp in components])
     if total_ratio == 0: total_ratio = 1.0
         
-    model = load_ml_model()
-    
     for comp in components:
         smiles = comp.get("smiles", "").strip()
         ratio = comp.get("ratio", 0) / total_ratio
@@ -311,21 +326,33 @@ def generate_ir_spectrum(components):
         if mol is None: continue
         mols.append(mol)
             
-        # 1) 말단기/잔량 성분 예측 (Monomer 구조 기반)
-        data_monomer = smiles_to_graph_features(mol, ratio=ratio)
+        # 1) 단량체(Monomer) 예측
+        data_monomer = smiles_to_graph_features(mol, ratio=ratio).to(device)
         with torch.no_grad():
-            pred_monomer = model(data_monomer.x, data_monomer.edge_index).numpy()[0]
+            pred_monomer = model(data_monomer.x, data_monomer.edge_index, torch.zeros(data_monomer.x.size(0), dtype=torch.long, device=device)).cpu().numpy()[0]
             
+        # QC 정밀 계산 연동 (단량체 기준)
+        if use_qc and 'calculate_ir_qc' in globals():
+            if smiles not in QC_CACHE:
+                print(f"[{smiles}] 신규 양자화학 계산 수행 중 (GFN2-xTB)...")
+                QC_CACHE[smiles] = calculate_ir_qc(smiles)
+            
+            qc_peaks = QC_CACHE[smiles]
+            qc_pred = peaks_to_spectrum(qc_peaks, wavenumbers)
+            
+            # GNN과 QC 결과 합성 (QC 비중 70%)
+            pred_monomer = (pred_monomer * 0.3) + (qc_pred * 0.7)
+
         # 2) 주쇄(Backbone) 성분 예측 (선택적 포화 구조 기반)
         sat_smiles = saturate_monomer(smiles)
         sat_mol = Chem.MolFromSmiles(sat_smiles)
         if sat_mol and sat_smiles != smiles:
-            data_sat = smiles_to_graph_features(sat_mol, ratio=ratio)
+            data_sat = smiles_to_graph_features(sat_mol, ratio=ratio).to(device)
             with torch.no_grad():
-                pred_backbone = model(data_sat.x, data_sat.edge_index).numpy()[0]
+                pred_backbone = model(data_sat.x, data_sat.edge_index, torch.zeros(data_sat.x.size(0), dtype=torch.long, device=device)).cpu().numpy()[0]
         else:
             pred_backbone = pred_monomer
-
+            
         # 3) 물리적 효과 적용 및 합성
         # n=1이면 100% monomer, n이 커질수록 backbone 비중 증가
         weight_monomer = 1.0 / n
@@ -352,13 +379,15 @@ def generate_ir_spectrum(components):
                 "width": fg["width"]
             })
             
-    # 최종 렌더링 스케일링
-    total_absorption = raw_prediction * 1.5
-    transmittance = 1.0 - total_absorption
+    # 최종 렌더링 (Beer-Lambert Law 적용: T = exp(-A))
+    # raw_prediction을 Absorbance로 간주하여 지수 매핑
+    transmittance = np.exp(-raw_prediction * 2.5) # 감도 조절을 위해 2.5배 스케일링
     
+    # Baseline Drift (약간의 우하향 경향성 추가)
     baseline_drift = np.linspace(0.0, 0.05, len(wavenumbers)) 
-    transmittance = transmittance - baseline_drift
-    transmittance = np.clip(transmittance, 0.0, 1.0)
+    transmittance = transmittance * (1.0 - baseline_drift)
+    
+    transmittance = np.clip(transmittance, 0.01, 1.0) # 0%에 딱 붙지 않게 최소값 유지
     
     return wavenumbers, transmittance * 100, all_identified_groups, mols
 
