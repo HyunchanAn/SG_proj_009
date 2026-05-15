@@ -5,11 +5,47 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 import shutil
 import tempfile
+import urllib.request
+import tarfile
+import platform
+
+def ensure_xtb_installed():
+    """배포 환경에서 xtb 바이너리가 있는지 확인하고, 없으면 다운로드하여 설정합니다."""
+    if shutil.which("xtb"):
+        return True
+    
+    # 리눅스 환경(Streamlit Cloud)에서만 자동 다운로드 시도
+    if platform.system() == "Linux":
+        xtb_dir = os.path.join(os.getcwd(), "xtb_bin")
+        xtb_path = os.path.join(xtb_dir, "bin", "xtb")
+        
+        if not os.path.exists(xtb_path):
+            os.makedirs(xtb_dir, exist_ok=True)
+            print("⏳ 배포용 xTB 바이너리를 다운로드 중입니다...")
+            url = "https://github.com/grimme-lab/xtb/releases/download/v6.7.0/xtb-6.7.0-linux-x86_64.tar.xz"
+            target_tar = os.path.join(xtb_dir, "xtb.tar.xz")
+            
+            try:
+                urllib.request.urlretrieve(url, target_tar)
+                # tar.xz 압축 해제
+                subprocess.run(["tar", "-xf", target_tar, "-C", xtb_dir], check=True)
+                os.remove(target_tar)
+                print("✅ xTB 설치 완료")
+            except Exception as e:
+                print(f"❌ xTB 다운로드 실패: {e}")
+                return False
+        
+        # PATH에 추가
+        os.environ["PATH"] += os.pathsep + os.path.join(xtb_dir, "bin")
+        return True
+    
+    return False
 
 def calculate_ir_qc(smiles, scaling_factor=0.96):
     """
     SMILES를 입력받아 xTB(GFN2-xTB) 양자화학 계산을 수행하고 IR 피크 정보를 반환합니다.
     """
+    ensure_xtb_installed()
     peaks = []
     
     # 1. 임시 작업 디렉토리 생성
