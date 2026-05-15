@@ -6,3 +6,4 @@ torch
 torch-geometric
 plotly
 scipy
+matplotlib
