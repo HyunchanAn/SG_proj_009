@@ -1,28 +1,45 @@
-[2026-04-24]
-- 프로젝트 초기화 및 가상 IR 스펙트럼 생성 도구 개발 시작
-- RDKit, NumPy, Matplotlib 라이브러리 기반 Python 환경 구성 확인 완료
-- 주요 작용기 식별(identify_functional_groups) 및 가상 데이터(generate_ir_spectrum) 생성 로직 구현
-- 생성된 파수(Wavenumber) 및 투과도(Transmittance) 기반 시각화 파이프라인(plot_ir_spectrum) 완성
-- 아스피린(Aspirin) SMILES 샘플 적용 테스트 및 sample_ir.png 이미지 추출 확인
-- Streamlit 프레임워크 연동(app.py)을 통한 대화형 웹 UI 구축 (SMILES 입력 및 실시간 IR 스펙트럼 렌더링 지원)
-- UI 화면 내 RDKit 기반 2D 분자 구조(MolToImage) 렌더링 기능 추가 적용
-- IR 시뮬레이션 알고리즘 고도화: 작용기(Functional Group) 데이터베이스 대폭 확장 및 세분화 (아민, 할로겐 등)
-- 현실성 부여를 위한 지문 영역(Fingerprint Region) 시뮬레이션 및 기기 베이스라인 노이즈 추가
+[SG_proj_009] 고분자 IR 스펙트럼 시뮬레이터 고도화 개발 로그
 
-[향후 고도화 기획]
-기획 1. 양자화학 기반 정밀 계산 연동 (브랜치: feature/quantum-ir)
-- Psi4, xTB 등의 양자역학 패키지를 활용하여 DFT 또는 반경험적 모델 기반 진동 주파수(Vibrational Frequency) 및 쌍극자 도함수(Dipole Derivative) 직접 계산.
-- 대칭성(IR Inactive) 및 물리적으로 정확한 강도(Intensity)와 파수(Wavenumber) 구현.
+[작업 요약]
+- 2026-05-11: 고분자 물리 효과 반영 및 양자화학-GNN 하이브리드 엔진 구축 완료.
 
-기획 2. 머신러닝(GNN) 기반 IR 예측 모델 도입 (브랜치: feature/ml-ir)
-- 분자 구조(SMILES)를 그래프로 변환하고 실제 SDBS/NIST IR 스펙트럼 데이터베이스로 학습된 Graph Neural Network 기반 AI 예측 모델 도입.
-- 연산 속도와 정밀도를 동시에 확보하는 접근 방식 연구.
+[기획 완료 내역]
+기획 1. 양자화학 연동 (xTB 기반) - [2026-05-11 완료]
+- GFN2-xTB 엔진을 연동하여 물리 기반의 정밀 피크 계산 구현.
+- GNN(데이터) + QC(물리) 하이브리드 추론 모델 구축 (3:7 가중 합성 및 캐싱 지원).
+- Beer-Lambert Law(T = exp(-A))를 적용하여 피크 뭉개짐(Clipping) 방지 및 실험 데이터급 곡선미 확보.
+- 수소 결합(H-Bond) 영역에 초강력 Broadening(Sigma 60) 및 저파수 Shift(120pt) 적용하여 리얼리티 극대화.
+- RDKit의 EmbedMolecule(ETKDG)을 통해 SMILES를 3D 구조로 변환 후 xTB Hessian 계산 수행.
+- g98.out 파싱 로직을 통해 파수(Wavenumber)와 강도(Intensity) 추출 및 Scaling Factor(0.96) 적용.
+- GNN 예측값과 QC 계산값을 3:7 비율로 합성하는 하이브리드 추론 엔진 구축 및 TemporaryDirectory 기반 파일 관리.
 
-[브랜치 작업 완료 요약 (2026-04-24)]
-1. feature/quantum-ir 브랜치
-- GFN2-xTB 양자역학 패키지와 ASE를 연동하여 정확한 헤시안(Hessian) 기반 진동 주파수 및 흡수 강도 산출 알고리즘 구축.
-- 이산적 피크를 매끄러운 곡선으로 변환하는 가우시안 스미어링(Gaussian Smearing) 로직 개발.
+기획 2. 역예측 모델 (Composition Optimization) - [2026-05-11 완료]
+- Scipy.optimize.minimize를 활용하여 실험 스펙트럼과 시뮬레이션 간의 MSE(Mean Squared Error)를 최소화하는 배합비 역추적 알고리즘 구현.
 
-2. feature/ml-ir 브랜치
-- 향후 스펙트럼 데이터베이스 학습을 위한 PyTorch 기반 IRGraphNeuralNetwork (GNN) 아키텍처 스켈레톤 구축.
-- RDKit 분자 객체 특성을 AI 학습용 텐서로 변환하는 전처리 파이프라인 구성 및 UI 모델 예측 연동 구현.
+기획 3. 고분자 사슬 효과(Polymer Chain Effects) 구현 - [2026-05-11 완료]
+- RDKit의 ReplaceSubstructs를 활용하여 비닐기/아세틸렌기를 알칸 구조로 변환하는 선택적 포화(Saturation) 로직 구현 (주쇄 모사).
+- 중합도(n)에 비례하여 Lorentz-like 브로드닝 및 저파수대로의 피크 시프트(Shift)를 물리적으로 모델링.
+- 단량체(Monomer)와 주쇄(Backbone)의 스펙트럼을 1/n 가중치로 합성하는 하이브리드 로직 적용.
+
+기획 4. 수소 결합(Hydrogen Bonding) 효과 모델링 - [2026-05-11 완료]
+- SMARTS 패턴([OX2H], [NX3H])을 통한 수소 결합 가능 작용기 식별.
+- 농도(Ratio)와 중합도(n)에 따른 가우시안 필터 기반의 Broadening 및 3300cm-1 부근의 정교한 Shift 효과 구현.
+
+기획 5. 인터랙티브 시각화 (Plotly 도입) - [2026-05-11 완료]
+- Plotly 기반의 Interactive 차트 도입: Zoom, Pan, 실시간 Hover 정보 제공.
+- Light/Dark 테마 선택 기능 및 테마별 최적화된 Color Palette 적용.
+- np.interp를 활용하여 스펙트럼 곡선 위의 정확한 좌표를 가리키는 고정밀 어노테이션 시스템 구축.
+
+기획 6. 데이터셋 확장 및 GNN 파인튜닝 - [2026-05-11 완료]
+- NIST/HuggingFace Lamblador 데이터셋에서 8,352개의 실제 실험 데이터 확보 및 전처리.
+- Apple Silicon MPS 가속을 활용하여 Knowledge Distillation 기반 GNN 학습 완료. (최종 Loss: 0.0349)
+
+[환경 및 인프라]
+- [GPU] Apple Silicon MPS 가속 전역 적용 (모델 로드 시 자동 감지).
+- [Git] .gitignore를 통한 데이터셋(datasets/) 및 캐시(__pycache__) 관리 효율화.
+- [Model] weights/ir_gnn_v1.pt (8k real-data fine-tuned).
+
+[향후 과제]
+- 기획 7. 동적 용매 효과(Solvent Effects) 모델링.
+- 기획 8. 3D 분자 구조 인터랙티브 시각화 연동.
+- 기획 9. 계산 속도 향상을 위한 멀티 프로세싱 도입.
